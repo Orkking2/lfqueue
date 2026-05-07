@@ -34,11 +34,14 @@ typedef int handle_t;
 #elif SCQ
 #include "scq.h"
 
-#elif SCQ
+#elif SCQD
 #include "scqd.h"
 
 #elif SCQ2
 #include "scq2.h"
+
+#elif WCQ
+#include "wcq.h"
 
 #else
 #error "Please specify a queue implementation."

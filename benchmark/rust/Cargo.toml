@@ -1,0 +1,14 @@
+[package]
+name = "lfqueue-rust-bench"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "rust-queue"
+path = "src/main.rs"
+
+[dependencies]
+crossbeam-queue = "0.3.12"
+libc = "0.2"
+rbbq = "0.1.0"
+ubq = "4.0.0"

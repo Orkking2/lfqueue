@@ -33,9 +33,23 @@ $ cd fast-wait-free-queue-1.0.0
 $ make
 ```
 
-This should generate 6 binaries (or 5 if your system does not support `CAS2`, `lcrq` will fail to compile): `wfqueue`, `wfqueue0`, `lcrq`, `ccqueue`, `msqueue`, `faa`, and `delay`. These are the `pairwise` benchmark compiled using different queue implementations.
+This should generate the C benchmark binaries, plus Rust benchmark wrappers if Cargo is available. Generated binaries and wrapper symlinks are placed in `binaries/`. The Rust wrappers are `rust-segqueue`, `rust-arrayqueue`, `rust-ubq`, `rust-ubq-config`, `rust-ubq-31`, `rust-ubq-127`, `rust-ubq-511`, `rust-ubq-2047`, `rust-ubq-pool4-2047`, `rust-ubq-yield-2047`, `rust-rbbq`, and `rust-rbbq-config`. These are the `pairwise` benchmark compiled using different queue implementations.
 - `wfqueue0`: the same as `wfqueue` except that its `PATIENCE` is set to `0`.
 - `delay`: a synthetic benchmark used to measure the time spent in the delay routine.
+- `rust-segqueue`: Crossbeam's unbounded `SegQueue`.
+- `rust-arrayqueue`: Crossbeam's bounded `ArrayQueue`.
+- `rust-ubq`: UBQ's default `ConfiguredUBQ` shape, currently equivalent to `rust-ubq-2047`.
+- `rust-ubq-config`: an environment-configured UBQ `ConfiguredUBQ`; set `UBQ_POOL_SIZE`, `UBQ_BLOCK_SIZE`, and optionally `UBQ_BACKOFF`.
+- `rust-ubq-*`: explicit UBQ `ConfiguredUBQ` variants. The numeric suffix is the block size; `pool4` retains four spare blocks; `yield` uses UBQ's yielding backoff policy.
+- `rust-rbbq`: RBBQ's bounded `FastFifo`.
+- `rust-rbbq-config`: an environment-configured RBBQ `FastFifo`; set `RBBQ_BLOCK_SIZE`.
+
+The bounded Rust queues use `RUST_QUEUE_CAPACITY` as their capacity when set, and otherwise use `max(4096, 2 * nprocs)`. `rust-rbbq` and `rust-rbbq-config` also accept `RBBQ_BLOCK_SIZE` and default to `128`.
+The configurable UBQ target accepts pool sizes `0`, `1`, `2`, `4`, `8`, `16`, and `32`; block sizes `31`, `63`, `127`, `255`, `511`, `1023`, `2047`, and `4095`; and `UBQ_BACKOFF=crossbeam` or `UBQ_BACKOFF=yield`.
+You can also create name-based UBQ wrappers for benchmark matrices: `make rust-ubq-pool4-block127` or `make rust-ubq-yield-pool4-block127`.
+RBBQ block-size wrappers accept any positive integer block size: `make rust-rbbq-block64`, `make rust-rbbq-block128`, or `make rust-rbbq-block256`.
+
+Use `make NO_RUST=1` to build only the C benchmarks.
 
 ## How to run
 
@@ -43,7 +57,7 @@ You can execute a binary directly, using the number of threads as an argument. W
 
 For example,
 ```
-./wfqueue 8
+./binaries/wfqueue 8
 ```
 runs `wfqueue` with 8 threads.
 
@@ -54,19 +68,19 @@ The script terminates when the **margin of error** is relatively small (**< 0.02
 
 For example, 
 ```
-./driver ./wfqueue 8
+./driver ./binaries/wfqueue 8
 ```
 runs `wfqueue` with 8 threads up to 10 times and collect statistic results.
 
-You can use the `benchmark` script, which invokes `driver` on all combinations of a list of binaries and a list of numbers of threads, and report the `mean running time` and `margin of error` for each combination. You can specify the list of binaries using the environment variable `TESTS`. You can specify the list of numbers of threads using the environment variable `PROCS`.
+You can use the `benchmark` script, which invokes `driver` on all combinations of a list of binaries and a list of numbers of threads, and report the `mean running time` and `margin of error` for each combination. You can specify the list of benchmark names using the environment variable `TESTS`; names without a slash are resolved under `binaries/`. You can specify the list of numbers of threads using the environment variable `PROCS`.
 
 The generated output of `benchmark` can be used as a datafile for gnuplot. The first column of `benchmark`'s output is the number threads. Then every two columns are the `mean running time` and `margin of error` for each queue implementation. They are in the same order as they are specified in `TESTS`.
 
 For example,
 ```
-TESTS=wfqueue:lcrq:faa:delay PROCS=1:2:4:8 ./benchmark
+TESTS=wfqueue:lcrq:faa:delay:rust-segqueue:rust-arrayqueue:rust-ubq:rust-rbbq PROCS=1:2:4:8 ./benchmark
 ```
-runs each of `wfqueue`, `lcrq`, `faa`, and `delay` using 1, 2, 4, and 8 threads.
+runs each listed benchmark using 1, 2, 4, and 8 threads.
 
 Then you can plot them using,
 ```

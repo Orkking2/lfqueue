@@ -1,5 +1,13 @@
+UBQ_POOL_SIZES = 0 1 2 4 8 16 32
+UBQ_BLOCK_SIZES = 31 63 127 255 511 1023 2047 4095
+RBBQ_BLOCK_SIZES = 31 63 127 255 511 1023 2047 4095
+
+UBQ_CROSSBEAM_TESTS = $(foreach pool,$(UBQ_POOL_SIZES),$(foreach block,$(UBQ_BLOCK_SIZES),rust-ubq-pool$(pool)-block$(block)))
+UBQ_YIELD_TESTS = $(foreach pool,$(UBQ_POOL_SIZES),$(foreach block,$(UBQ_BLOCK_SIZES),rust-ubq-yield-pool$(pool)-block$(block)))
+RBBQ_BLOCK_TESTS = $(foreach block,$(RBBQ_BLOCK_SIZES),rust-rbbq-block$(block))
+
 C_TESTS = wfqueue wfqueue0 lcrq ccqueue msqueue faa delay cas scq scq2 scqd ncq wcq
-RUST_TESTS = rust-segqueue rust-arrayqueue rust-ubq rust-ubq-config rust-ubq-31 rust-ubq-127 rust-ubq-511 rust-ubq-2047 rust-ubq-pool4-2047 rust-ubq-yield-2047 rust-rbbq rust-rbbq-config
+RUST_TESTS = rust-segqueue rust-arrayqueue rust-ubq rust-ubq-config rust-ubq-31 rust-ubq-127 rust-ubq-511 rust-ubq-2047 rust-ubq-pool4-2047 rust-ubq-yield-2047 $(UBQ_CROSSBEAM_TESTS) $(UBQ_YIELD_TESTS) rust-rbbq rust-rbbq-config $(RBBQ_BLOCK_TESTS)
 BIN_DIR = binaries
 OBJ_DIR = $(BIN_DIR)/obj
 C_BINARIES = $(addprefix $(BIN_DIR)/,$(C_TESTS))
@@ -13,6 +21,8 @@ BINARIES = $(C_BINARIES) $(RUST_BINARIES)
 endif
 RUST_BENCH = rust/target/release/rust-queue
 RUST_BENCH_LINK = ../$(RUST_BENCH)
+RUST_GENERIC_TESTS = $(filter-out $(UBQ_CROSSBEAM_TESTS) $(UBQ_YIELD_TESTS) $(RBBQ_BLOCK_TESTS),$(RUST_TESTS))
+RUST_GENERIC_BINARIES = $(addprefix $(BIN_DIR)/,$(RUST_GENERIC_TESTS))
 
 # if using clang, please also specify -mcx16 for x86-64
 CC = gcc
@@ -99,22 +109,22 @@ $(BIN_DIR)/%: %.c $(OBJ_DIR)/harness.o $(OBJ_DIR)/%/$(BENCH_OBJ) | $(BIN_DIR)
 $(RUST_BENCH): rust/Cargo.toml rust/src/main.rs
 	cargo build --manifest-path rust/Cargo.toml --release
 
-$(RUST_TESTS): %: $(BIN_DIR)/%
+$(RUST_GENERIC_TESTS): %: $(BIN_DIR)/%
 
-$(RUST_BINARIES): $(RUST_BENCH) | $(BIN_DIR)
+$(RUST_GENERIC_BINARIES): $(RUST_BENCH) | $(BIN_DIR)
 	ln -sf $(RUST_BENCH_LINK) $@
 
-rust-ubq-%: $(RUST_BENCH) | $(BIN_DIR)
-	case "$(BIN_DIR)/$@" in \
-	  $(BIN_DIR)/rust-ubq-pool*-block*|$(BIN_DIR)/rust-ubq-yield-pool*-block*) ln -sf $(RUST_BENCH_LINK) $(BIN_DIR)/$@ ;; \
-	  *) echo "unsupported Rust UBQ target: $@" >&2; exit 1 ;; \
-	esac
+rust-ubq-pool%: $(RUST_BENCH) | $(BIN_DIR)
+	ln -sf $(RUST_BENCH_LINK) $(BIN_DIR)/$@
 
-$(BIN_DIR)/rust-ubq-%: $(RUST_BENCH) | $(BIN_DIR)
-	case "$@" in \
-	  $(BIN_DIR)/rust-ubq-pool*-block*|$(BIN_DIR)/rust-ubq-yield-pool*-block*) ln -sf $(RUST_BENCH_LINK) $@ ;; \
-	  *) echo "unsupported Rust UBQ target: $@" >&2; exit 1 ;; \
-	esac
+rust-ubq-yield-pool%: $(RUST_BENCH) | $(BIN_DIR)
+	ln -sf $(RUST_BENCH_LINK) $(BIN_DIR)/$@
+
+$(BIN_DIR)/rust-ubq-pool%: $(RUST_BENCH) | $(BIN_DIR)
+	ln -sf $(RUST_BENCH_LINK) $@
+
+$(BIN_DIR)/rust-ubq-yield-pool%: $(RUST_BENCH) | $(BIN_DIR)
+	ln -sf $(RUST_BENCH_LINK) $@
 
 rust-rbbq-block%: $(RUST_BENCH) | $(BIN_DIR)
 	ln -sf $(RUST_BENCH_LINK) $(BIN_DIR)/$@

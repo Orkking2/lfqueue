@@ -1,7 +1,45 @@
 #!/bin/bash
 
+read_list() {
+  local name=$1
+  local fallback=$2
+  local value=${!name:-$fallback}
+  IFS=': ' read -r -a LIST_RESULT <<< "$value"
+}
+
 if [ -z "$TESTS" ]; then
-  TESTS=(wfqueue wfqueue0 faa lcrq ccqueue msqueue delay)
+  BASE_TESTS=(wfqueue wfqueue0 faa lcrq ccqueue msqueue delay rust-segqueue rust-arrayqueue)
+
+  read_list UBQ_POOL_SIZES "0 1 2 4 8 16 32"
+  UBQ_POOLS=("${LIST_RESULT[@]}")
+
+  read_list UBQ_BLOCK_SIZES "31 63 127 255 511 1023 2047 4095"
+  UBQ_BLOCKS=("${LIST_RESULT[@]}")
+
+  read_list UBQ_BACKOFFS "crossbeam yield"
+  UBQ_BACKOFF_LIST=("${LIST_RESULT[@]}")
+
+  read_list RBBQ_BLOCK_SIZES "31 63 127 255 511 1023 2047 4095"
+  RBBQ_BLOCKS=("${LIST_RESULT[@]}")
+
+  TESTS=("${BASE_TESTS[@]}")
+
+  for backoff in "${UBQ_BACKOFF_LIST[@]}"; do
+    for pool in "${UBQ_POOLS[@]}"; do
+      for block in "${UBQ_BLOCKS[@]}"; do
+        case "$backoff" in
+          crossbeam) TESTS+=("rust-ubq-pool${pool}-block${block}") ;;
+          yield) TESTS+=("rust-ubq-yield-pool${pool}-block${block}") ;;
+          *) echo "unsupported UBQ backoff in UBQ_BACKOFFS: $backoff" >&2; exit 1 ;;
+        esac
+      done
+    done
+  done
+
+  TESTS+=(rust-rbbq)
+  for block in "${RBBQ_BLOCKS[@]}"; do
+    TESTS+=("rust-rbbq-block${block}")
+  done
 else
   IFS=':' read -r -a TESTS <<< "${TESTS}"
 fi
@@ -16,11 +54,18 @@ printf '#! Host: %s\n' $( hostname )
 printf '#! Benchmarks: %s\n' "${TESTS[*]}"
 printf '#! Threads: %s\n' "${PROCS[*]}"
 
+BIN_DIR=${BIN_DIR:-./binaries}
+
 for j in ${PROCS[@]}; do
   printf '%d' $j
   for i in ${TESTS[@]}; do
+    if [[ "$i" == */* ]]; then
+      BIN="$i"
+    else
+      BIN="$BIN_DIR/$i"
+    fi
     echo -ne \
-      "$(./driver ./$i $j | tail -n 1 | awk '{printf " %.2f %.2f", $3, $5}')"
+      "$(./driver "$BIN" $j | tail -n 1 | awk '{printf " %.2f %.2f", $3, $5}')"
   done
   printf '\n'
 done

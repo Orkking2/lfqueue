@@ -33,20 +33,20 @@ $ cd fast-wait-free-queue-1.0.0
 $ make
 ```
 
-This should generate the C benchmark binaries, plus Rust benchmark wrappers if Cargo is available. Generated binaries and wrapper symlinks are placed in `binaries/`. The Rust wrappers are `rust-segqueue`, `rust-arrayqueue`, `rust-ubq`, `rust-ubq-config`, `rust-ubq-31`, `rust-ubq-127`, `rust-ubq-511`, `rust-ubq-2047`, `rust-ubq-pool4-2047`, `rust-ubq-yield-2047`, `rust-rbbq`, and `rust-rbbq-config`. These are the `pairwise` benchmark compiled using different queue implementations.
+This should generate the C benchmark binaries, plus Rust benchmark wrappers if Cargo is available. Generated binaries and wrapper symlinks are placed in `binaries/`. The Rust wrappers include `rust-segqueue`, `rust-arrayqueue`, compatibility UBQ names such as `rust-ubq-31`, the full default UBQ pool/block matrix, `rust-rbbq`, and the default RBBQ block-size matrix. These are the `pairwise` benchmark compiled using different queue implementations.
 - `wfqueue0`: the same as `wfqueue` except that its `PATIENCE` is set to `0`.
 - `delay`: a synthetic benchmark used to measure the time spent in the delay routine.
 - `rust-segqueue`: Crossbeam's unbounded `SegQueue`.
 - `rust-arrayqueue`: Crossbeam's bounded `ArrayQueue`.
 - `rust-ubq`: UBQ's default `ConfiguredUBQ` shape, currently equivalent to `rust-ubq-2047`.
 - `rust-ubq-config`: an environment-configured UBQ `ConfiguredUBQ`; set `UBQ_POOL_SIZE`, `UBQ_BLOCK_SIZE`, and optionally `UBQ_BACKOFF`.
-- `rust-ubq-*`: explicit UBQ `ConfiguredUBQ` variants. The numeric suffix is the block size; `pool4` retains four spare blocks; `yield` uses UBQ's yielding backoff policy.
+- `rust-ubq-*`: explicit UBQ `ConfiguredUBQ` variants. Name-based matrix wrappers use `rust-ubq-pool<pool>-block<block>` for crossbeam backoff and `rust-ubq-yield-pool<pool>-block<block>` for yielding backoff.
 - `rust-rbbq`: RBBQ's bounded `FastFifo`.
 - `rust-rbbq-config`: an environment-configured RBBQ `FastFifo`; set `RBBQ_BLOCK_SIZE`.
 
 The bounded Rust queues use `RUST_QUEUE_CAPACITY` as their capacity when set, and otherwise use `max(4096, 2 * nprocs)`. `rust-rbbq` and `rust-rbbq-config` also accept `RBBQ_BLOCK_SIZE` and default to `128`.
 The configurable UBQ target accepts pool sizes `0`, `1`, `2`, `4`, `8`, `16`, and `32`; block sizes `31`, `63`, `127`, `255`, `511`, `1023`, `2047`, and `4095`; and `UBQ_BACKOFF=crossbeam` or `UBQ_BACKOFF=yield`.
-You can also create name-based UBQ wrappers for benchmark matrices: `make rust-ubq-pool4-block127` or `make rust-ubq-yield-pool4-block127`.
+The default `make` target creates name-based UBQ wrappers for all pool sizes `0`, `1`, `2`, `4`, `8`, `16`, and `32`, all block sizes `31`, `63`, `127`, `255`, `511`, `1023`, `2047`, and `4095`, and both `crossbeam` and `yield` backoff policies. You can also create a specific wrapper directly: `make rust-ubq-pool4-block127` or `make rust-ubq-yield-pool4-block127`.
 RBBQ block-size wrappers accept any positive integer block size: `make rust-rbbq-block64`, `make rust-rbbq-block128`, or `make rust-rbbq-block256`.
 
 Use `make NO_RUST=1` to build only the C benchmarks.
@@ -74,6 +74,14 @@ runs `wfqueue` with 8 threads up to 10 times and collect statistic results.
 
 You can use the `benchmark` script, which invokes `driver` on all combinations of a list of binaries and a list of numbers of threads, and report the `mean running time` and `margin of error` for each combination. You can specify the list of benchmark names using the environment variable `TESTS`; names without a slash are resolved under `binaries/`. You can specify the list of numbers of threads using the environment variable `PROCS`.
 
+By default, `./benchmark` runs the standard C/Rust baselines, every generated UBQ pool/block combination for both crossbeam and yielding backoff, `rust-rbbq`, and the default RBBQ block-size matrix. You can narrow the generated default matrix without replacing `TESTS` by setting `UBQ_POOL_SIZES`, `UBQ_BLOCK_SIZES`, `UBQ_BACKOFFS`, or `RBBQ_BLOCK_SIZES`, using either spaces or colons as separators.
+
+For example,
+```
+UBQ_POOL_SIZES=1:4 UBQ_BLOCK_SIZES=31:127 UBQ_BACKOFFS=crossbeam RBBQ_BLOCK_SIZES=64:128 PROCS=1:2:4 ./benchmark
+```
+runs the standard baselines, four crossbeam UBQ combinations, two RBBQ block sizes, and the listed thread counts.
+
 The generated output of `benchmark` can be used as a datafile for gnuplot. The first column of `benchmark`'s output is the number threads. Then every two columns are the `mean running time` and `margin of error` for each queue implementation. They are in the same order as they are specified in `TESTS`.
 
 For example,
@@ -89,6 +97,8 @@ plot "t" using 1:(20000/($2-$8)) t "wfqueue" w lines, \
      "t" using 1:(20000/($4-$8)) t "lcrq" w lines, \
      "t" using 1:(20000/($6-$8)) t "faa" w lines
 ```
+
+The repo also includes `visualize-results.html`. When served from this directory, for example with VS Code Live Preview, it loads `all-results.dat` and renders elapsed-time and throughput charts. To keep large matrices readable, UBQ and RBBQ variant families are collapsed to the variants that win at least one thread-count scenario.
 
 ## How to map threads to cores
 

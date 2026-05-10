@@ -1,3 +1,4 @@
 /benchmark/rust/target
 /benchmark/binaries
 .vscode
+*.dat

@@ -19,7 +19,7 @@ if [ -z "$TESTS" ]; then
   read_list UBQ_BACKOFFS "crossbeam yield"
   UBQ_BACKOFF_LIST=("${LIST_RESULT[@]}")
 
-  read_list RBBQ_BLOCK_SIZES "31 63 127 255 511 1023 2047 4095"
+  read_list RBBQ_BLOCK_SIZES "32 64 128 256 512 1024 2048 4096"
   RBBQ_BLOCKS=("${LIST_RESULT[@]}")
 
   TESTS=("${BASE_TESTS[@]}")

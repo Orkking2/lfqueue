@@ -1,6 +1,6 @@
 UBQ_POOL_SIZES = 0 1 2 4 8 16 32
 UBQ_BLOCK_SIZES = 31 63 127 255 511 1023 2047 4095
-RBBQ_BLOCK_SIZES = 31 63 127 255 511 1023 2047 4095
+RBBQ_BLOCK_SIZES = 32 64 128 256 512 1024 2048 4096
 
 UBQ_CROSSBEAM_TESTS = $(foreach pool,$(UBQ_POOL_SIZES),$(foreach block,$(UBQ_BLOCK_SIZES),rust-ubq-pool$(pool)-block$(block)))
 UBQ_YIELD_TESTS = $(foreach pool,$(UBQ_POOL_SIZES),$(foreach block,$(UBQ_BLOCK_SIZES),rust-ubq-yield-pool$(pool)-block$(block)))

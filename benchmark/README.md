@@ -47,7 +47,7 @@ This should generate the C benchmark binaries, plus Rust benchmark wrappers if C
 The bounded Rust queues use `RUST_QUEUE_CAPACITY` as their capacity when set, and otherwise use `max(4096, 2 * nprocs)`. `rust-rbbq` and `rust-rbbq-config` also accept `RBBQ_BLOCK_SIZE` and default to `128`.
 The configurable UBQ target accepts pool sizes `0`, `1`, `2`, `4`, `8`, `16`, and `32`; block sizes `31`, `63`, `127`, `255`, `511`, `1023`, `2047`, and `4095`; and `UBQ_BACKOFF=crossbeam` or `UBQ_BACKOFF=yield`.
 The default `make` target creates name-based UBQ wrappers for all pool sizes `0`, `1`, `2`, `4`, `8`, `16`, and `32`, all block sizes `31`, `63`, `127`, `255`, `511`, `1023`, `2047`, and `4095`, and both `crossbeam` and `yield` backoff policies. You can also create a specific wrapper directly: `make rust-ubq-pool4-block127` or `make rust-ubq-yield-pool4-block127`.
-RBBQ block-size wrappers accept any positive integer block size: `make rust-rbbq-block64`, `make rust-rbbq-block128`, or `make rust-rbbq-block256`.
+The default `make` target also creates RBBQ block-size wrappers for powers of two from `32` through `4096`. RBBQ block-size wrappers accept any positive integer block size, but non-power-of-two sizes are not part of the default matrix because they can fail to make progress in the current `rbbq` implementation. You can create a specific wrapper directly: `make rust-rbbq-block64`, `make rust-rbbq-block128`, or `make rust-rbbq-block256`.
 
 Use `make NO_RUST=1` to build only the C benchmarks.
 

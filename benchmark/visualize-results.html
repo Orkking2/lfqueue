@@ -50,6 +50,11 @@
       white-space: nowrap;
     }
 
+    .meta.error {
+      color: #b42318;
+      white-space: normal;
+    }
+
     main {
       display: grid;
       gap: 18px;
@@ -391,39 +396,71 @@
       if (data) renderAll();
     });
 
-    loadData().then(({ text, source }) => {
-      data = parseData(text);
-      document.getElementById("meta").textContent =
-        `Source: ${source} | Host: ${data.host} | Threads: ${data.threads.join(", ")} | Benchmarks parsed: ${data.names.length}`;
-      renderAll();
-    });
+    loadData()
+      .then(({ text, source }) => {
+        data = parseData(text);
+        document.getElementById("meta").textContent = [
+          `Source: ${source}`,
+          `Host: ${data.host}`,
+          `Threads: ${data.threads.join(", ")}`,
+          `Benchmarks parsed: ${data.names.length}`,
+          data.warnings.length ? `Warnings: ${data.warnings.join("; ")}` : ""
+        ].filter(Boolean).join(" | ");
+        renderAll();
+      })
+      .catch(error => {
+        showError(`Unable to render benchmark results: ${error.message}`);
+      });
 
     async function loadData() {
+      const timeoutMs = 4000;
+      let timeout;
       try {
-        const response = await fetch("all-results.dat", { cache: "no-store" });
+        const response = await Promise.race([
+          fetch("all-results.dat", { cache: "no-store" }),
+          new Promise((_, reject) => {
+            timeout = setTimeout(() => reject(new Error(`fetch timed out after ${timeoutMs} ms`)), timeoutMs);
+          })
+        ]);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return { text: await response.text(), source: "all-results.dat" };
       } catch (error) {
-        return { text: fallbackData, source: "embedded fallback data" };
+        return { text: fallbackData, source: `embedded fallback data (${error.message})` };
+      } finally {
+        clearTimeout(timeout);
       }
     }
 
     function parseData(text) {
       const lines = text.trim().split(/\n+/);
-      const host = lines.find(line => line.startsWith("#! Host:")).replace("#! Host:", "").trim();
-      const names = lines.find(line => line.startsWith("#! Benchmarks:"))
+      const hostLine = lines.find(line => line.startsWith("#! Host:"));
+      const benchmarksLine = lines.find(line => line.startsWith("#! Benchmarks:"));
+      if (!hostLine) throw new Error("missing '#! Host:' header");
+      if (!benchmarksLine) throw new Error("missing '#! Benchmarks:' header");
+
+      const host = hostLine.replace("#! Host:", "").trim();
+      const rawNames = benchmarksLine
         .replace("#! Benchmarks:", "")
         .trim()
         .split(/\s+/);
-      const rows = lines
+      const rawRows = lines
         .filter(line => !line.startsWith("#"))
-        .map(line => line.trim().split(/\s+/).map(Number));
+        .map(line => ({
+          values: line.trim().split(/\s+/).map(Number)
+        }));
 
-      const points = rows.map(row => {
-        const threads = row[0];
-        const values = names.map((name, index) => {
-          const mean = row[1 + index * 2];
-          const error = row[2 + index * 2];
+      if (rawRows.length === 0) throw new Error("no benchmark rows found");
+
+      let missingMeasurements = 0;
+      const points = rawRows.map(row => {
+        const threads = row.values[0];
+        const values = rawNames.flatMap((name, index) => {
+          const mean = row.values[1 + index * 2];
+          const error = row.values[2 + index * 2];
+          if (!Number.isFinite(mean) || !Number.isFinite(error) || mean <= 0) {
+            missingMeasurements += 1;
+            return [];
+          }
           return {
             name,
             threads,
@@ -433,14 +470,37 @@
           };
         });
         return { threads, values };
-      });
+      }).filter(row => Number.isFinite(row.threads) && row.values.length > 0);
+
+      const measuredNames = new Set(points.flatMap(row => row.values.map(item => item.name)));
+      const names = rawNames.filter(name => measuredNames.has(name));
+      const warnings = [];
+      if (missingMeasurements > 0) {
+        warnings.push(`skipped ${missingMeasurements} missing measurements`);
+      }
+      const expectedRows = readThreadHeader(lines);
+      if (expectedRows.length > 0 && expectedRows.length !== points.length) {
+        warnings.push(`thread header lists ${expectedRows.length} rows, data contains ${points.length}`);
+      }
 
       return {
         host,
         names,
-        threads: rows.map(row => row[0]),
-        points
+        threads: points.map(row => row.threads),
+        points,
+        warnings
       };
+    }
+
+    function readThreadHeader(lines) {
+      const threadsLine = lines.find(line => line.startsWith("#! Threads:"));
+      if (!threadsLine) return [];
+      return threadsLine
+        .replace("#! Threads:", "")
+        .trim()
+        .split(/\s+/)
+        .map(Number)
+        .filter(Number.isFinite);
     }
 
     function renderAll() {
@@ -568,10 +628,17 @@
       const series = selectedNames.map(name => ({
         name,
         color: colors[data.names.indexOf(name) % colors.length],
-        points: data.points.map(row => row.values.find(item => item.name === name))
-      }));
+        points: data.points
+          .map(row => row.values.find(item => item.name === name))
+          .filter(point => point && Number.isFinite(point[metric]))
+      })).filter(item => item.points.length > 0);
 
-      const values = series.flatMap(item => item.points.map(point => point[metric]));
+      if (series.length === 0) {
+        text(svg, width / 2, height / 2, "No numeric data for selected series", "axis-label", "middle");
+        return;
+      }
+
+      const values = series.flatMap(item => item.points.map(point => point[metric])).filter(Number.isFinite);
       const positiveValues = values.filter(value => value > 0);
       const max = Math.max(...values);
       const min = state.yScale === "log" ? Math.min(...positiveValues) : 0;
@@ -580,7 +647,8 @@
 
       const xMin = Math.log2(Math.min(...data.threads));
       const xMax = Math.log2(Math.max(...data.threads));
-      const x = threads => plot.x0 + ((Math.log2(threads) - xMin) / (xMax - xMin)) * plotWidth;
+      const xRange = xMax - xMin || 1;
+      const x = threads => plot.x0 + ((Math.log2(threads) - xMin) / xRange) * plotWidth;
       const y = value => {
         if (state.yScale === "log") {
           const lv = Math.log10(Math.max(value, Number.EPSILON));
@@ -752,6 +820,23 @@
 
     function hideTooltip() {
       tooltip.style.display = "none";
+    }
+
+    function showError(message) {
+      const meta = document.getElementById("meta");
+      meta.textContent = message;
+      meta.classList.add("error");
+      document.getElementById("summary").innerHTML = "";
+      for (const id of ["elapsed-chart", "throughput-chart"]) {
+        const svg = document.getElementById(id);
+        svg.replaceChildren();
+        const width = svg.clientWidth || 900;
+        const height = svg.clientHeight || 420;
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        text(svg, width / 2, height / 2, "Unable to render data", "axis-label", "middle");
+      }
+      document.getElementById("elapsed-legend").replaceChildren();
+      document.getElementById("throughput-legend").replaceChildren();
     }
   </script>
 </body>
